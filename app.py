@@ -12,7 +12,7 @@ st.markdown("Upload gambar makanan, model EfficientNetB0 (fine-tuned) akan mempr
 
 IMG_SIZE = 224  # harus sama dengan waktu training EfficientNetB0
 MODEL_FILE = "best_effnet_food101.h5"
-CLASS_FILE = "classes.json"
+CLASS_FILE = "class_indices (1).json"
 
 # ==== Load daftar kelas ====
 with open(CLASS_FILE, "r") as f:
