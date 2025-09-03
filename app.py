@@ -3,83 +3,59 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 from tensorflow.keras.preprocessing.image import img_to_array
+import json
 
-# === Setup UI === #
-st.set_page_config(
-    page_title="Food101 Classifier 🍔🍕🥗",
-    page_icon="🍽️",
-    layout="centered"
-)
+# ==== Setup UI ====
+st.set_page_config(page_title="Food Classifier 🍔🥗", page_icon="🍽", layout="centered")
+st.title("🍔🥗 Food Classifier")
+st.markdown("Upload gambar makanan, model EfficientNetB0 (fine-tuned) akan memprediksi kelasnya.")
 
-st.title("🍽️ Food101 Classifier")
-st.markdown("""
-Upload gambar makanan dan model **EfficientNetB0** akan memprediksi kelasnya.  
-Model: `best_effnet_food101.h5`
-""")
+IMG_SIZE = 224  # harus sama dengan waktu training EfficientNetB0
+MODEL_FILE = "best_effnet_food101.h5"
+CLASS_FILE = "classes.json"
 
-# === Config === #
-IMG_SIZE = 224
-N_CLASSES = 101
-MODEL_PATH = "best_effnet_food101.h5"
+# ==== Load daftar kelas ====
+with open(CLASS_FILE, "r") as f:
+    classes = json.load(f)
+class_names = list(classes.keys())  # tergantung json: key atau value
 
-# === Load Model Safely === #
+# ==== Load Model ====
 @st.cache_resource
-def load_model_safe():
-    try:
-        # 1. Coba load full model
-        model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-        st.success("✅ Model loaded as full Keras model")
-    except Exception as e:
-        st.warning("⚠️ Detected weights-only file, rebuilding model...")
-        # 2. Build EfficientNetB0 architecture + classifier
-        base_model = tf.keras.applications.EfficientNetB0(
-            include_top=False,
-            weights=None,
-            input_shape=(IMG_SIZE, IMG_SIZE, 3)
-        )
-        x = tf.keras.layers.GlobalAveragePooling2D()(base_model.output)
-        output = tf.keras.layers.Dense(N_CLASSES, activation="softmax")(x)
-        model = tf.keras.Model(inputs=base_model.input, outputs=output)
-        model.load_weights(MODEL_PATH)
-        st.success("✅ Model rebuilt and weights loaded")
+def load_trained_model():
+    model = tf.keras.models.load_model(MODEL_FILE, compile=False)
     return model
 
-model = load_model_safe()
+model = load_trained_model()
 
-# === Preprocess Function === #
+# ==== Preprocessing ====
 def preprocess(img: Image.Image):
     img = img.convert("RGB").resize((IMG_SIZE, IMG_SIZE))
     arr = img_to_array(img) / 255.0
     arr = np.expand_dims(arr, axis=0)
     return arr, img
 
-# === Upload & Predict === #
-uploaded = st.file_uploader("📸 Upload gambar makanan", type=["jpg", "jpeg", "png"])
+# ==== Upload & Predict ====
+uploaded = st.file_uploader("📸 Upload gambar makanan", type=["jpg","jpeg","png"])
 if uploaded:
     img_pil = Image.open(uploaded)
     arr, img_display = preprocess(img_pil)
 
     st.image(img_display, caption="Gambar", use_column_width=True)
 
-    pred = model.predict(arr)[0]
-    top_idx = np.argmax(pred)
-    confidence = pred[top_idx]
+    preds = model.predict(arr)[0]
+    top_idx = np.argmax(preds)
+    confidence = preds[top_idx]
 
-    st.subheader("🔮 Hasil Prediksi")
-    st.metric("Kelas Index", str(top_idx))
+    st.subheader("🍴 Hasil Prediksi")
+    st.metric("Kelas", class_names[top_idx])
     st.metric("Confidence", f"{confidence*100:.2f}%")
     st.progress(float(confidence))
 
-    st.markdown("⚠️ Note: mapping **index → nama makanan** harus ditambahkan manual sesuai Food101 class names.")
+    # tampilkan 3 prediksi teratas
+    top3_idx = preds.argsort()[-3:][::-1]
+    st.write("### 🔝 Top 3 Predictions:")
+    for i in top3_idx:
+        st.write(f"- {class_names[i]}: **{preds[i]*100:.2f}%**")
 
-# === Footer === #
-st.markdown("---")
-st.markdown("""
-### ✨ Kenapa Aplikasi Ini Bagus?
-- Bisa load **full model** atau **weights-only** otomatis.
-- Antarmuka **sederhana & intuitif**.
-- Ada **confidence score & progress bar**.
-- Mudah di-deploy ke **Streamlit Cloud**.
-""")
 
 
