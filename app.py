@@ -11,16 +11,16 @@ from tensorflow.keras import layers, models
 # ======================================================
 # Konfigurasi
 # ======================================================
-MODEL_PATH = "best_effnet_food101 (1).h5"
+MODEL_PATH = "best_effnet_food101 (1).h5"   # file weights
 CLASS_INDICES_PATH = "class_indices (1).json"
 IMG_SIZE = 224
 NUM_CLASSES = 101  # Food-101 dataset
 
 # ======================================================
-# Cek keberadaan file
+# Cek file
 # ======================================================
 if not os.path.exists(MODEL_PATH):
-    st.error(f"❌ File model/weights '{MODEL_PATH}' tidak ditemukan!")
+    st.error(f"❌ File weights '{MODEL_PATH}' tidak ditemukan!")
     st.stop()
 else:
     st.info("✅ Weights berhasil ditemukan")
@@ -35,14 +35,22 @@ else:
 idx_to_class = {v: k for k, v in class_indices.items()}
 
 # ======================================================
-# Build model EfficientNet + load weights
+# Build arsitektur sesuai training + load weights
 # ======================================================
 @st.cache_resource
 def build_and_load_model():
-    base = EfficientNetB0(include_top=False, input_shape=(IMG_SIZE, IMG_SIZE, 3), weights=None)
-    x = layers.GlobalAveragePooling2D()(base.output)
-    output = layers.Dense(NUM_CLASSES, activation="softmax")(x)
-    model = models.Model(inputs=base.input, outputs=output)
+    base_model = EfficientNetB0(weights="imagenet", include_top=False, input_shape=(IMG_SIZE, IMG_SIZE, 3))
+    base_model.trainable = False
+
+    inputs = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3))
+    x = base_model(inputs, training=False)
+    x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dropout(0.4)(x)
+    x = layers.Dense(512, activation="relu")(x)
+    x = layers.Dropout(0.3)(x)
+    outputs = layers.Dense(NUM_CLASSES, activation="softmax")(x)
+
+    model = models.Model(inputs, outputs, name="EffNetB0_Food101")
 
     # load weights
     model.load_weights(MODEL_PATH)
@@ -56,7 +64,7 @@ model = build_and_load_model()
 def predict(image: Image.Image):
     img = image.convert("RGB").resize((IMG_SIZE, IMG_SIZE))
     arr = np.array(img) / 255.0
-    arr = np.expand_dims(arr, axis=0)  # (1, 224, 224, 3)
+    arr = np.expand_dims(arr, axis=0)  # (1, h, w, c)
 
     probs = model.predict(arr, verbose=0)[0]
     top5_idx = np.argsort(probs)[::-1][:5]
@@ -81,7 +89,7 @@ st.sidebar.header("ℹ️ Tentang Aplikasi")
 st.sidebar.write(
     """
     - Dataset: **Food-101 (101 kelas makanan)**
-    - Model: **EfficientNetB0**
+    - Model: **EfficientNetB0** (imagenet + custom head)
     - Framework: **TensorFlow + Streamlit**
     - Fitur:
         - Prediksi Top-5 kelas
@@ -103,7 +111,7 @@ if uploaded_file:
         top_label, top_conf = results[0]
         st.success(f"🍽️ Prediksi utama: **{top_label}** ({top_conf:.2%})")
 
-        # Progress bar
+        # Top-5 progress bar
         st.subheader("📊 Top-5 Hasil Prediksi (Progress Bar)")
         for label, prob in results:
             st.write(f"- {label}: {prob:.2%}")
