@@ -4,6 +4,7 @@ import os
 import json
 from PIL import Image
 import tensorflow as tf
+import matplotlib.pyplot as plt
 
 # ======================================================
 # Konfigurasi
@@ -47,13 +48,19 @@ model = load_model()
 # Fungsi Prediksi
 # ======================================================
 def predict(image: Image.Image):
-    img = image.resize((IMG_SIZE, IMG_SIZE))
+    # pastikan gambar RGB (3 channel)
+    img = image.convert("RGB").resize((IMG_SIZE, IMG_SIZE))
     arr = np.array(img) / 255.0
+
+    # jaga-jaga jika grayscale
+    if arr.shape[-1] == 1:
+        arr = np.repeat(arr, 3, axis=-1)
+
     arr = np.expand_dims(arr, axis=0)
 
+    # prediksi
     probs = model.predict(arr, verbose=0)[0]
     top5_idx = np.argsort(probs)[::-1][:5]  # ambil 5 prediksi teratas
-
     results = [(idx_to_class[i], probs[i]) for i in top5_idx]
     return results
 
@@ -80,7 +87,7 @@ st.sidebar.write(
     - Framework: **TensorFlow + Streamlit**
     - Fitur:
         - Prediksi Top-5 kelas
-        - Confidence Score
+        - Confidence Score (progress bar + chart)
         - Desain interaktif & mudah digunakan
     """
 )
@@ -99,7 +106,18 @@ if uploaded_file:
         st.success(f"🍽️ Prediksi utama: **{top_label}** ({top_conf:.2%})")
 
         # Tampilkan Top-5 prediksi
-        st.subheader("📊 Top-5 Hasil Prediksi")
+        st.subheader("📊 Top-5 Hasil Prediksi (Progress Bar)")
         for label, prob in results:
             st.write(f"- {label}: {prob:.2%}")
             st.progress(float(prob))
+
+        # Visualisasi chart
+        st.subheader("📈 Visualisasi Confidence Score (Top-5)")
+        labels = [r[0] for r in results]
+        scores = [r[1] for r in results]
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.barh(labels[::-1], scores[::-1], color="orange")
+        ax.set_xlabel("Confidence")
+        ax.set_xlim(0, 1)
+        st.pyplot(fig)
