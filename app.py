@@ -40,7 +40,8 @@ idx_to_class = {v: k for k, v in class_indices.items()}
 # ======================================================
 @st.cache_resource
 def load_model():
-    return tf.keras.models.load_model(MODEL_PATH)
+    # compile=False untuk menghindari error shape mismatch saat load
+    return tf.keras.models.load_model(MODEL_PATH, compile=False)
 
 model = load_model()
 
@@ -48,19 +49,25 @@ model = load_model()
 # Fungsi Prediksi
 # ======================================================
 def predict(image: Image.Image):
-    # pastikan gambar RGB (3 channel)
-    img = image.convert("RGB").resize((IMG_SIZE, IMG_SIZE))
-    arr = np.array(img) / 255.0
+    # cek input shape model (last dim = jumlah channel)
+    input_shape = model.input_shape
+    channels = input_shape[-1]
 
-    # jaga-jaga jika grayscale
-    if arr.shape[-1] == 1:
-        arr = np.repeat(arr, 3, axis=-1)
+    if channels == 1:
+        # model minta grayscale
+        img = image.convert("L").resize((IMG_SIZE, IMG_SIZE))
+        arr = np.array(img) / 255.0
+        arr = np.expand_dims(arr, axis=-1)  # tambahkan channel axis
+    else:
+        # model minta RGB
+        img = image.convert("RGB").resize((IMG_SIZE, IMG_SIZE))
+        arr = np.array(img) / 255.0
 
-    arr = np.expand_dims(arr, axis=0)
+    arr = np.expand_dims(arr, axis=0)  # (1, h, w, c)
 
     # prediksi
     probs = model.predict(arr, verbose=0)[0]
-    top5_idx = np.argsort(probs)[::-1][:5]  # ambil 5 prediksi teratas
+    top5_idx = np.argsort(probs)[::-1][:5]
     results = [(idx_to_class[i], probs[i]) for i in top5_idx]
     return results
 
@@ -95,7 +102,7 @@ st.sidebar.write(
 uploaded_file = st.file_uploader("📂 Upload gambar makanan", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
-    image = Image.open(uploaded_file).convert("RGB")
+    image = Image.open(uploaded_file)
     st.image(image, caption="📸 Gambar yang diupload", use_container_width=True)
 
     if st.button("🔍 Prediksi"):
@@ -105,7 +112,7 @@ if uploaded_file:
         top_label, top_conf = results[0]
         st.success(f"🍽️ Prediksi utama: **{top_label}** ({top_conf:.2%})")
 
-        # Tampilkan Top-5 prediksi
+        # Tampilkan Top-5 prediksi (progress bar)
         st.subheader("📊 Top-5 Hasil Prediksi (Progress Bar)")
         for label, prob in results:
             st.write(f"- {label}: {prob:.2%}")
