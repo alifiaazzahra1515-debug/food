@@ -10,7 +10,7 @@ import pandas as pd
 # ======================================================
 # Konfigurasi
 # ======================================================
-MODEL_PATH = "best_effnet_food101_fixed.h5"   # hasil dari fix_model.py
+MODEL_PATH = "best_effnet_food101 (1)"   # hasil dari fix_model.py
 CLASS_INDICES_PATH = "class_indices (1).json"
 IMG_SIZE = 224  # input size saat training
 
