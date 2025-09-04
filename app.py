@@ -5,67 +5,59 @@ import json
 from PIL import Image
 import tensorflow as tf
 import matplotlib.pyplot as plt
+from tensorflow.keras.applications import EfficientNetB0
+from tensorflow.keras import layers, models
 
 # ======================================================
 # Konfigurasi
 # ======================================================
 MODEL_PATH = "best_effnet_food101 (1).h5"
 CLASS_INDICES_PATH = "class_indices (1).json"
-IMG_SIZE = 224  # sesuai input EfficientNet
+IMG_SIZE = 224
+NUM_CLASSES = 101  # Food-101 dataset
 
 # ======================================================
-# Cek keberadaan model lokal
+# Cek keberadaan file
 # ======================================================
 if not os.path.exists(MODEL_PATH):
-    st.error(f"❌ File model '{MODEL_PATH}' tidak ditemukan!")
+    st.error(f"❌ File model/weights '{MODEL_PATH}' tidak ditemukan!")
     st.stop()
 else:
-    st.info("✅ Model berhasil ditemukan")
+    st.info("✅ Weights berhasil ditemukan")
 
-# ======================================================
-# Load class indices
-# ======================================================
-if os.path.exists(CLASS_INDICES_PATH):
-    with open(CLASS_INDICES_PATH, "r") as f:
-        class_indices = json.load(f)
-else:
+if not os.path.exists(CLASS_INDICES_PATH):
     st.error(f"❌ File '{CLASS_INDICES_PATH}' tidak ditemukan!")
     st.stop()
+else:
+    with open(CLASS_INDICES_PATH, "r") as f:
+        class_indices = json.load(f)
 
-# Buat mapping index → label
 idx_to_class = {v: k for k, v in class_indices.items()}
 
 # ======================================================
-# Load model dengan cache
+# Build model EfficientNet + load weights
 # ======================================================
 @st.cache_resource
-def load_model():
-    # compile=False untuk menghindari error shape mismatch saat load
-    return tf.keras.models.load_model(MODEL_PATH, compile=False)
+def build_and_load_model():
+    base = EfficientNetB0(include_top=False, input_shape=(IMG_SIZE, IMG_SIZE, 3), weights=None)
+    x = layers.GlobalAveragePooling2D()(base.output)
+    output = layers.Dense(NUM_CLASSES, activation="softmax")(x)
+    model = models.Model(inputs=base.input, outputs=output)
 
-model = load_model()
+    # load weights
+    model.load_weights(MODEL_PATH)
+    return model
+
+model = build_and_load_model()
 
 # ======================================================
 # Fungsi Prediksi
 # ======================================================
 def predict(image: Image.Image):
-    # cek input shape model (last dim = jumlah channel)
-    input_shape = model.input_shape
-    channels = input_shape[-1]
+    img = image.convert("RGB").resize((IMG_SIZE, IMG_SIZE))
+    arr = np.array(img) / 255.0
+    arr = np.expand_dims(arr, axis=0)  # (1, 224, 224, 3)
 
-    if channels == 1:
-        # model minta grayscale
-        img = image.convert("L").resize((IMG_SIZE, IMG_SIZE))
-        arr = np.array(img) / 255.0
-        arr = np.expand_dims(arr, axis=-1)  # tambahkan channel axis
-    else:
-        # model minta RGB
-        img = image.convert("RGB").resize((IMG_SIZE, IMG_SIZE))
-        arr = np.array(img) / 255.0
-
-    arr = np.expand_dims(arr, axis=0)  # (1, h, w, c)
-
-    # prediksi
     probs = model.predict(arr, verbose=0)[0]
     top5_idx = np.argsort(probs)[::-1][:5]
     results = [(idx_to_class[i], probs[i]) for i in top5_idx]
@@ -81,16 +73,15 @@ st.markdown(
     """
     Upload gambar makanan, lalu klik **Prediksi** untuk melihat hasil klasifikasi.
     
-    Model: **EfficientNet (Food-101)** | Input Size: 224x224  
+    Model: **EfficientNetB0 (Food-101)** | Input Size: 224x224  
     """
 )
 
-# Sidebar tambahan
 st.sidebar.header("ℹ️ Tentang Aplikasi")
 st.sidebar.write(
     """
     - Dataset: **Food-101 (101 kelas makanan)**
-    - Model: **EfficientNet**
+    - Model: **EfficientNetB0**
     - Framework: **TensorFlow + Streamlit**
     - Fitur:
         - Prediksi Top-5 kelas
@@ -112,13 +103,13 @@ if uploaded_file:
         top_label, top_conf = results[0]
         st.success(f"🍽️ Prediksi utama: **{top_label}** ({top_conf:.2%})")
 
-        # Tampilkan Top-5 prediksi (progress bar)
+        # Progress bar
         st.subheader("📊 Top-5 Hasil Prediksi (Progress Bar)")
         for label, prob in results:
             st.write(f"- {label}: {prob:.2%}")
             st.progress(float(prob))
 
-        # Visualisasi chart
+        # Chart
         st.subheader("📈 Visualisasi Confidence Score (Top-5)")
         labels = [r[0] for r in results]
         scores = [r[1] for r in results]
